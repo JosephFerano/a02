@@ -1,0 +1,6 @@
+[package]
+name = "a02"
+version = "0.1.0"
+authors = ["Joseph Ferano <joseph@ferano.io>"]
+
+[dependencies]
