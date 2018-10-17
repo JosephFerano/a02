@@ -1,5 +1,5 @@
 /target
 **/*.rs.bk
 .idea/
-*.suo
+*.swo
 *.swp

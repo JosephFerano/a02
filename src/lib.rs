@@ -4,6 +4,13 @@ pub enum AccessType {
     Write,
 }
 
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub enum AccessResult {
+    MissSimple,
+    MissReplace(u32, u32, u32),
+    Hit,
+}
+
 pub struct MemoryAccess {
     pub frame_number : u32,
     pub access_type : AccessType,
