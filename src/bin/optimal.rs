@@ -53,7 +53,11 @@ fn process_page_requests(accesses : Vec<MemoryAccess> , mut v_memory : Vec<u32>)
                     }
                 }
 //                println!("Removing {} from index {}, adding {}", v_memory[index as usize], index, access.frame_number);
-                results.push(AccessResult::MissReplace(v_memory[index as usize], index as u32, access.frame_number));
+                results.push(AccessResult::MissReplace(
+                    MissReplacement::new(
+                        v_memory[index as usize],
+                        index as u32,
+                        access.frame_number)));
                 v_memory[index as usize] = access.frame_number;
             }
         } else {

@@ -1,4 +1,5 @@
 
+#[derive(Debug, PartialEq)]
 pub enum AccessType {
     Read,
     Write,
@@ -7,8 +8,25 @@ pub enum AccessType {
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum AccessResult {
     MissSimple,
-    MissReplace(u32, u32, u32),
+    MissReplace(MissReplacement),
     Hit,
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct MissReplacement {
+    pub replaced : u32,
+    pub frame_index : u32,
+    pub new_page : u32,
+}
+
+impl MissReplacement {
+    pub fn new(replaced : u32 , frame_index : u32 , new_page : u32) -> MissReplacement {
+        MissReplacement {
+            replaced,
+            frame_index,
+            new_page,
+        }
+    }
 }
 
 pub struct MemoryAccess {
@@ -97,8 +115,6 @@ impl WSCRP_Params {
         }
     }
 }
-
-
 
 pub fn parse_file(filename : Option<&String>) -> Result<String, String> {
     match filename {
