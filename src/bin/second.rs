@@ -52,7 +52,7 @@ fn process_page_requests(accesses : Vec<MemoryAccess> , mut v_memory : VecDeque<
                 v_memory[0] = Page { number : access.frame_number , referenced : true };
             }
         } else {
-            v_memory[contained.unwrap()] = true;
+            v_memory[contained.unwrap() as usize].referenced = true;
             results.push(AccessResult::Hit);
         }
     }

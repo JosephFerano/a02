@@ -116,6 +116,12 @@ impl WSCRP_Params {
     }
 }
 
+pub fn get_total_faults(results : &Vec<AccessResult>) -> usize {
+    results.iter()
+        .filter(|r| **r != AccessResult::Hit)
+        .count()
+}
+
 pub fn parse_file(filename : Option<&String>) -> Result<String, String> {
     match filename {
         None => Err(String::from("No filename provided")),

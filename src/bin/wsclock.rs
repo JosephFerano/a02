@@ -43,7 +43,7 @@ fn process_page_requests(tau : u32 , accesses : Vec<MemoryAccess> , mut v_memory
                     if is_referenced {
                         let mut page = v_memory.pop().unwrap();
                         page.referenced = false;
-                        v_memory.push_back(page);
+                        v_memory.push(page);
                     } else {
                         break;
                     }
