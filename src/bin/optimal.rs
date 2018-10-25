@@ -8,20 +8,20 @@ fn main() -> std::io::Result<()> {
     println!("Memory accesses: {}", params.access_string);
 
     let accesses = MemoryAccess::create(params.access_string);
-    let v_memory : Vec<u32> = Vec::with_capacity(params.total_frames as usize);
-    let results = process_page_requests(accesses, v_memory);
+    let v_memory : Vec<usize> = Vec::with_capacity(params.total_frames as usize);
+    let results = process_page_requests(params.total_frames as usize, accesses, v_memory);
 
     println!("Total faults: {}", get_total_faults(&results));
 
     Ok(())
 }
 
-fn process_page_requests(accesses : Vec<MemoryAccess> , mut v_memory : Vec<u32>) -> Vec<AccessResult> {
+fn process_page_requests(total_physical_pages : usize , accesses : Vec<MemoryAccess> , mut v_memory : Vec<usize>) -> Vec<AccessResult> {
     let mut results : Vec<AccessResult> = Vec::with_capacity(accesses.len());
     for (i, access) in accesses.iter().enumerate() {
         if !v_memory.contains(&access.frame_number) {
             let length = v_memory.len().clone();
-            if length < v_memory.capacity() as usize {
+            if length < total_physical_pages {
                 v_memory.push(access.frame_number);
                 results.push(AccessResult::MissSimple);
             } else {
@@ -54,7 +54,7 @@ fn process_page_requests(accesses : Vec<MemoryAccess> , mut v_memory : Vec<u32>)
                 results.push(AccessResult::MissReplace(
                     MissReplacement::new(
                         v_memory[index as usize],
-                        index as u32,
+                        index as usize,
                         access.frame_number)));
                 v_memory[index as usize] = access.frame_number;
             }
@@ -73,8 +73,9 @@ mod tests {
     #[test]
     fn three_initial_accesses_are_all_simple_misses() {
         let accesses = MemoryAccess::create(String::from("R:1 R:2 W:3"));
-        let v_memory : Vec<u32> = Vec::with_capacity(4);
-        let results = process_page_requests(accesses, v_memory);
+        let total_frames = 4;
+        let v_memory : Vec<usize> = Vec::with_capacity(total_frames);
+        let results = process_page_requests(total_frames, accesses, v_memory);
         assert_eq!(results[0] , AccessResult::MissSimple);
         assert_eq!(results[1] , AccessResult::MissSimple);
         assert_eq!(results[2] , AccessResult::MissSimple);
@@ -84,8 +85,9 @@ mod tests {
     #[test]
     fn third_miss_is_miss_replace() {
         let accesses = MemoryAccess::create(String::from("R:1 R:2 W:3"));
-        let v_memory : Vec<u32> = Vec::with_capacity(2);
-        let results = process_page_requests(accesses, v_memory);
+        let total_frames = 2;
+        let v_memory : Vec<usize> = Vec::with_capacity(total_frames);
+        let results = process_page_requests(total_frames, accesses, v_memory);
         assert_eq!(results[0] , AccessResult::MissSimple);
         assert_eq!(results[1] , AccessResult::MissSimple);
 
@@ -99,8 +101,9 @@ mod tests {
     #[test]
     fn all_are_subsequent_hits_after_first_miss() {
         let accesses = MemoryAccess::create(String::from("R:1 R:1 W:1 R:1 W:1"));
-        let v_memory : Vec<u32> = Vec::with_capacity(2);
-        let results = process_page_requests(accesses, v_memory);
+        let total_frames = 2;
+        let v_memory : Vec<usize> = Vec::with_capacity(total_frames);
+        let results = process_page_requests(total_frames, accesses, v_memory);
         assert_eq!(results[0] , AccessResult::MissSimple);
         for i in 1..results.len() {
             assert_eq!(results[i] , AccessResult::Hit);
@@ -111,8 +114,9 @@ mod tests {
     #[test]
     fn alternating_hits_and_misses() {
         let accesses = MemoryAccess::create(String::from("R:1 W:1 W:2 R:1 R:2 W:3 W:4"));
-        let v_memory : Vec<u32> = Vec::with_capacity(4);
-        let results = process_page_requests(accesses, v_memory);
+        let total_frames = 4;
+        let v_memory : Vec<usize> = Vec::with_capacity(total_frames);
+        let results = process_page_requests(total_frames, accesses, v_memory);
         assert_eq!(results[0] , AccessResult::MissSimple);
         assert_eq!(results[1] , AccessResult::Hit);
         assert_eq!(results[2] , AccessResult::MissSimple);
@@ -127,8 +131,9 @@ mod tests {
     #[test]
     fn replace_the_last_one_to_be_accessed() {
         let accesses = MemoryAccess::create(String::from("R:1 R:2 R:3 R:4 R:1 R:2 R:3"));
-        let v_memory : Vec<u32> = Vec::with_capacity(3);
-        let results = process_page_requests(accesses, v_memory);
+        let total_frames = 3;
+        let v_memory : Vec<usize> = Vec::with_capacity(total_frames);
+        let results = process_page_requests(total_frames, accesses, v_memory);
         assert_eq!(results[0] , AccessResult::MissSimple);
         assert_eq!(results[1] , AccessResult::MissSimple);
         assert_eq!(results[2] , AccessResult::MissSimple);
@@ -149,8 +154,9 @@ mod tests {
     #[test]
     fn replace_second_because_its_no_longer_accessed() {
         let accesses = MemoryAccess::create(String::from("R:1 R:2 R:3 R:4 R:1 R:4"));
-        let v_memory : Vec<u32> = Vec::with_capacity(3);
-        let results = process_page_requests(accesses, v_memory);
+        let total_frames = 3;
+        let v_memory : Vec<usize> = Vec::with_capacity(total_frames);
+        let results = process_page_requests(total_frames, accesses, v_memory);
         assert_eq!(results[0] , AccessResult::MissSimple);
         assert_eq!(results[1] , AccessResult::MissSimple);
         assert_eq!(results[2] , AccessResult::MissSimple);
@@ -167,8 +173,9 @@ mod tests {
     #[test]
     fn replace_first_and_third_because_they_are_no_longer_accessed() {
         let accesses = MemoryAccess::create(String::from("R:1 R:2 R:3 R:4 R:5 R:2 R:4"));
-        let v_memory : Vec<u32> = Vec::with_capacity(3);
-        let results = process_page_requests(accesses, v_memory);
+        let total_frames = 3;
+        let v_memory : Vec<usize> = Vec::with_capacity(total_frames);
+        let results = process_page_requests(total_frames, accesses, v_memory);
         assert_eq!(results[0] , AccessResult::MissSimple);
         assert_eq!(results[1] , AccessResult::MissSimple);
         assert_eq!(results[2] , AccessResult::MissSimple);
@@ -187,8 +194,9 @@ mod tests {
     #[test]
     fn replace_first_twice_because_of_miss() {
         let accesses = MemoryAccess::create(String::from("R:1 R:2 R:3 R:4"));
-        let v_memory : Vec<u32> = Vec::with_capacity(2);
-        let results = process_page_requests(accesses, v_memory);
+        let total_frames = 2;
+        let v_memory : Vec<usize> = Vec::with_capacity(total_frames);
+        let results = process_page_requests(total_frames, accesses, v_memory);
         assert_eq!(results[0] , AccessResult::MissSimple);
         assert_eq!(results[1] , AccessResult::MissSimple);
 
@@ -206,8 +214,9 @@ mod tests {
     #[test]
     fn replace_first_thrice() {
         let accesses = MemoryAccess::create(String::from("R:1 R:2 R:3 R:4 R:5 R:3 R:2 R:1"));
-        let v_memory : Vec<u32> = Vec::with_capacity(3);
-        let results = process_page_requests(accesses, v_memory);
+        let total_frames = 3;
+        let v_memory : Vec<usize> = Vec::with_capacity(total_frames);
+        let results = process_page_requests(total_frames, accesses, v_memory);
         assert_eq!(results[0] , AccessResult::MissSimple);
         assert_eq!(results[1] , AccessResult::MissSimple);
         assert_eq!(results[2] , AccessResult::MissSimple);
@@ -228,4 +237,5 @@ mod tests {
 
         assert_eq!(get_total_faults(&results) , 6);
     }
+
 }

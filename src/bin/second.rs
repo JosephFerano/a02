@@ -12,25 +12,21 @@ fn main() -> std::io::Result<()> {
 
     let v_memory : VecDeque<Page> = VecDeque::with_capacity(params.total_frames as usize);
 
-    let results = process_page_requests(accesses, v_memory);
+    let results = process_page_requests(params.total_frames as usize, accesses, v_memory);
 
-    println!("Size {}", results.len());
-    println!("Total faults: {}", &results
-        .iter()
-        .filter(|r| **r != AccessResult::Hit)
-        .count());
+    println!("Total faults: {}", get_total_faults(&results));
 
     Ok(())
 }
 
-fn process_page_requests(accesses : Vec<MemoryAccess> , mut v_memory : VecDeque<Page>) -> Vec<AccessResult> {
+fn process_page_requests(total_physical_pages : usize , accesses : Vec<MemoryAccess> , mut v_memory : VecDeque<Page>) -> Vec<AccessResult> {
     let mut results : Vec<AccessResult> = Vec::with_capacity(accesses.len());
 
     for (_i, access) in accesses.iter().enumerate() {
         let contained = contains_page(access.frame_number, &v_memory);
         if contained.is_none() {
             let length = v_memory.len().clone();
-            if length < v_memory.capacity() as usize {
+            if length < total_physical_pages {
                 v_memory.push_back(Page { number : access.frame_number, referenced : true });
                 results.push(AccessResult::MissSimple);
             } else {
@@ -44,12 +40,13 @@ fn process_page_requests(accesses : Vec<MemoryAccess> , mut v_memory : VecDeque<
                         break;
                     }
                 }
+                let popped = v_memory.pop_front().unwrap();
+                v_memory.push_back(Page { number : access.frame_number , referenced : true });
                 results.push(AccessResult::MissReplace(
                     MissReplacement::new(
-                        v_memory[0].number,
+                        popped.number,
                         0,
                         access.frame_number)));
-                v_memory[0] = Page { number : access.frame_number , referenced : true };
             }
         } else {
             v_memory[contained.unwrap() as usize].referenced = true;
@@ -60,10 +57,11 @@ fn process_page_requests(accesses : Vec<MemoryAccess> , mut v_memory : VecDeque<
     results
 }
 
-fn contains_page(page_num : u32 , collection : &VecDeque<Page>) -> Option<u32> {
-    for (i, item) in collection.iter().enumerate() {
+fn contains_page(page_num : usize , collection : &VecDeque<Page>) -> Option<usize> {
+    for i in 0..collection.len() {
+        let item = &collection[i];
         if page_num == item.number {
-            return Some(i as u32);
+            return Some(i);
         }
     }
     None
@@ -71,7 +69,138 @@ fn contains_page(page_num : u32 , collection : &VecDeque<Page>) -> Option<u32> {
 
 #[derive(Debug, Clone)]
 pub struct Page {
-    pub number : u32,
+    pub number : usize,
     pub referenced : bool,
 }
 
+#[cfg(test)]
+mod tests {
+    use a02::*;
+    use super::*;
+
+    #[test]
+    fn three_initial_accesses_are_all_simple_misses() {
+        let accesses = MemoryAccess::create(String::from("R:1 R:2 W:3"));
+        let total_pages = 4;
+        let v_memory : VecDeque<Page> = VecDeque::with_capacity(total_pages);
+        let results = process_page_requests(total_pages, accesses, v_memory);
+        assert_eq!(results[0] , AccessResult::MissSimple);
+        assert_eq!(results[1] , AccessResult::MissSimple);
+        assert_eq!(results[2] , AccessResult::MissSimple);
+        assert_eq!(get_total_faults(&results) , 3);
+    }
+
+    #[test]
+    fn third_miss_is_miss_replace() {
+        let accesses = MemoryAccess::create(String::from("R:1 R:2 W:3"));
+        let total_pages = 2;
+        let v_memory : VecDeque<Page> = VecDeque::with_capacity(total_pages);
+        let results = process_page_requests(total_pages, accesses, v_memory);
+        assert_eq!(results[0] , AccessResult::MissSimple);
+        assert_eq!(results[1] , AccessResult::MissSimple);
+
+        // Replaced R:1 at index 0 with R:3
+        let mr = MissReplacement::new(1, 0, 3);
+        assert_eq!(results[2] , AccessResult::MissReplace(mr));
+
+        assert_eq!(get_total_faults(&results) , 3);
+    }
+
+    #[test]
+    fn all_are_subsequent_hits_after_first_miss() {
+        let accesses = MemoryAccess::create(String::from("R:1 R:1 W:1 R:1 W:1"));
+        let total_pages = 2;
+        let v_memory : VecDeque<Page> = VecDeque::with_capacity(total_pages);
+        let results = process_page_requests(total_pages, accesses, v_memory);
+        assert_eq!(results[0] , AccessResult::MissSimple);
+        for i in 1..results.len() {
+            assert_eq!(results[i] , AccessResult::Hit);
+        }
+        assert_eq!(get_total_faults(&results) , 1);
+    }
+
+    #[test]
+    fn alternating_hits_and_misses() {
+        let accesses = MemoryAccess::create(String::from("R:1 W:1 W:2 R:1 R:2 W:3 W:4"));
+        let total_pages = 4;
+        let v_memory : VecDeque<Page> = VecDeque::with_capacity(total_pages);
+        let results = process_page_requests(total_pages, accesses, v_memory);
+        assert_eq!(results[0] , AccessResult::MissSimple);
+        assert_eq!(results[1] , AccessResult::Hit);
+        assert_eq!(results[2] , AccessResult::MissSimple);
+        assert_eq!(results[3] , AccessResult::Hit);
+        assert_eq!(results[4] , AccessResult::Hit);
+        assert_eq!(results[5] , AccessResult::MissSimple);
+        assert_eq!(results[6] , AccessResult::MissSimple);
+        assert_eq!(results.len() , 7);
+        assert_eq!(get_total_faults(&results) , 4);
+    }
+
+    #[test]
+    fn replace_the_first_one_because_first_three_are_referenced() {
+        let accesses = MemoryAccess::create(String::from("R:1 R:2 R:3 R:4"));
+        let total_pages = 3;
+        let v_memory : VecDeque<Page> = VecDeque::with_capacity(total_pages);
+        let results = process_page_requests(total_pages, accesses, v_memory);
+        assert_eq!(results[0] , AccessResult::MissSimple);
+        assert_eq!(results[1] , AccessResult::MissSimple);
+        assert_eq!(results[2] , AccessResult::MissSimple);
+
+        // Replaced R:1 at index 0 with R:4
+        let mr = MissReplacement::new(1, 0, 4);
+        assert_eq!(results[3] , AccessResult::MissReplace(mr));
+
+        assert_eq!(get_total_faults(&results) , 4);
+    }
+
+    #[test]
+    fn replace_third_because_its_no_longer_referenced_after_replacing_first() {
+        let accesses = MemoryAccess::create(String::from("R:1 R:2 R:3 R:4 R:2 R:1"));
+        let total_pages = 3;
+        let v_memory : VecDeque<Page> = VecDeque::with_capacity(total_pages);
+        let results = process_page_requests(total_pages, accesses, v_memory);
+        assert_eq!(results[0] , AccessResult::MissSimple);
+        assert_eq!(results[1] , AccessResult::MissSimple);
+        assert_eq!(results[2] , AccessResult::MissSimple);
+        assert_eq!(results[4] , AccessResult::Hit);
+
+        // Replaced R:1 at index 0, pushed R:4
+        let mr = MissReplacement::new(1, 0, 4);
+        assert_eq!(results[3] , AccessResult::MissReplace(mr));
+
+        // Replaced R:3 at index 0, pushed R:1
+        let mr = MissReplacement::new(3, 0, 1);
+        assert_eq!(results[5] , AccessResult::MissReplace(mr));
+
+        assert_eq!(get_total_faults(&results) , 5);
+    }
+
+    #[test]
+    fn replace_each_subsequent_page_because_none_are_referenced() {
+        let accesses = MemoryAccess::create(String::from("R:1 R:2 R:3 R:4 R:5 R:6 R:4 R:5 R:6"));
+        let total_pages = 3;
+        let v_memory : VecDeque<Page> = VecDeque::with_capacity(total_pages);
+        let results = process_page_requests(total_pages, accesses, v_memory);
+        assert_eq!(results[0] , AccessResult::MissSimple);
+        assert_eq!(results[1] , AccessResult::MissSimple);
+        assert_eq!(results[2] , AccessResult::MissSimple);
+        assert_eq!(results[6] , AccessResult::Hit);
+        assert_eq!(results[7] , AccessResult::Hit);
+        assert_eq!(results[8] , AccessResult::Hit);
+
+        // Replaced R:1 at index 0 with R:4
+        let mr = MissReplacement::new(1, 0, 4);
+        assert_eq!(results[3] , AccessResult::MissReplace(mr));
+
+        // Replaced R:2 at index 0 with R:5
+        let mr = MissReplacement::new(2, 0, 5);
+        assert_eq!(results[4] , AccessResult::MissReplace(mr));
+
+        // Replaced R:3 at index 0 with R:5
+        let mr = MissReplacement::new(3, 0, 6);
+        assert_eq!(results[5] , AccessResult::MissReplace(mr));
+
+        assert_eq!(get_total_faults(&results) , 6);
+    }
+
+}

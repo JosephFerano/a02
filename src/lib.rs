@@ -14,13 +14,13 @@ pub enum AccessResult {
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct MissReplacement {
-    pub replaced : u32,
-    pub frame_index : u32,
-    pub new_page : u32,
+    pub replaced : usize,
+    pub frame_index : usize,
+    pub new_page : usize,
 }
 
 impl MissReplacement {
-    pub fn new(replaced : u32 , frame_index : u32 , new_page : u32) -> MissReplacement {
+    pub fn new(replaced : usize , frame_index : usize , new_page : usize) -> MissReplacement {
         MissReplacement {
             replaced,
             frame_index,
@@ -30,7 +30,7 @@ impl MissReplacement {
 }
 
 pub struct MemoryAccess {
-    pub frame_number : u32,
+    pub frame_number : usize,
     pub access_type : AccessType,
 }
 
@@ -46,7 +46,7 @@ impl MemoryAccess {
                     other => panic!("Invalid access token: {}", other),
                 },
                 frame_number : {
-                    match ps.next().unwrap().parse::<u32>() {
+                    match ps.next().unwrap().parse::<usize>() {
                         Ok(n) => n,
                         Err(e) => panic!("Invalid memory access token: {}", e)
                     }
@@ -58,16 +58,16 @@ impl MemoryAccess {
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone)]
 pub struct ORA_SCA_Params {
-    pub total_frames : u32,
+    pub total_frames : usize,
     pub access_string : String,
 }
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone)]
 pub struct WSCRP_Params {
-    pub total_frames : u32,
+    pub total_frames : usize,
     pub access_string : String,
-    pub tau : u32,
+    pub tau : usize,
 }
 
 impl ORA_SCA_Params {
@@ -129,9 +129,9 @@ pub fn parse_file(filename : Option<&String>) -> Result<String, String> {
     }
 }
 
-pub fn parse_number(num_kind : &str , num_string : Option<&String>) -> Result<u32, String> {
+pub fn parse_number(num_kind : &str , num_string : Option<&String>) -> Result<usize, String> {
     match num_string {
         None => Err(format!("No {} count provided", num_kind)),
-        Some(a) => a.parse::<u32>().map_err(|_| format!("Invalid {} count provided", num_kind)),
+        Some(a) => a.parse::<usize>().map_err(|_| format!("Invalid {} count provided", num_kind)),
     }
 }
