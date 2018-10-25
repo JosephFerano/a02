@@ -34,61 +34,60 @@ fn process_page_requests(tau : usize , total_physical_pages : usize , accesses :
                     is_dirty : false,
                     referenced : true, });
                 results.push(AccessResult::MissSimple);
+//                println!("MissSimple {}", access.frame_number);
             } else {
-                let length = v_memory.len();
-                let mut candidate = Candidate::new(pointer % length, PageStatus::None);
-                for _ in 0..length {
+                let mut index = 0;
+                let start_pointer = pointer % length;
+                let mut iteration = 0;
+                // Iterate once to
+                loop {
                     let page = &mut v_memory[pointer % length];
+                    println!("Checking {:?} Iter {} Age {}", page, iteration, clock - page.timestamp);
                     if page.referenced {
                         page.referenced = false;
-                        pointer += 1;
                     } else {
                         let age = clock - page.timestamp;
                         if age > tau {
-                            // Check to see if there's a clean page further down
-                            if page.is_dirty {
-                                let new_candidate = Candidate::new(pointer % length, PageStatus::OldAndDirty);
-                                if candidate < new_candidate { candidate = new_candidate; }
-                                println!("OldAndDirty {}", page.number);
-                                schedule_write_to_disk(page.clone());
-                            } else {
-                                // We can end the for loop, we found an old page that's clean
-                                let new_candidate = Candidate::new(pointer % length, PageStatus::OldAndClean);
-                                if candidate < new_candidate { candidate = new_candidate; }
+                            if !page.is_dirty {
+                                index = pointer % length;
                                 println!("OldAndClean {}", page.number);
                                 break;
                             }
-                        } else {
-                            if page.is_dirty {
-                                let new_candidate = Candidate::new(pointer % length, PageStatus::Dirty);
-                                if candidate < new_candidate { candidate = new_candidate; }
-                                println!("Dirty {}", page.number);
-                                schedule_write_to_disk(page.clone());
-                            } else {
-                                let new_candidate = Candidate::new(pointer % length, PageStatus::Clean);
-                                if candidate < new_candidate { candidate = new_candidate; }
-                                println!("Clean {}", page.number);
+                        } else if iteration > 0 {
+                            if !page.is_dirty {
+                                index = pointer % length;
+                                println!("OldAndClean {}", page.number);
+                                break;
                             }
                         }
-                        pointer += 1;
+                        if page.is_dirty {
+                            println!("OldAndDirty {}", page.number);
+                            schedule_write_to_disk(page.clone());
+                            page.is_dirty = false;
+                        }
+                    }
+                    pointer += 1;
+                    if start_pointer == pointer % length {
+                        iteration += 1;
                     }
                 }
-//                println!("{:?}", candidate.status);
-                let index = candidate.index;
+                let i = index;
                 results.push(AccessResult::MissReplace(
                     MissReplacement::new(
-                        v_memory[index].number,
-                        index,
+                        v_memory[i].number,
+                        i,
                         access.frame_number)));
-                v_memory[index] = Page {
+                v_memory[i] = Page {
                     number : access.frame_number,
                     timestamp : clock,
                     is_dirty : false,
                     referenced : true };
             }
+            println!("-----------------")
         } else {
-            println!("Hit {:?}", v_memory[contained.unwrap()].number);
+//            println!("Hit {:?}", v_memory[contained.unwrap()].number);
             v_memory[contained.unwrap()].referenced = true;
+            v_memory[contained.unwrap()].timestamp = clock;
             if access.access_type == AccessType::Write {
                 v_memory[contained.unwrap()].is_dirty = true;
             }
@@ -101,31 +100,6 @@ fn process_page_requests(tau : usize , total_physical_pages : usize , accesses :
 
 fn schedule_write_to_disk(page : Page) {
 //    println!("Scheduling write to disk {:?}", page);
-}
-
-#[derive(Debug, Clone, PartialOrd, PartialEq, Eq)]
-struct Candidate {
-    index : usize,
-    status : PageStatus,
-}
-
-impl Candidate {
-    pub fn new(index : usize , status : PageStatus) -> Candidate { Candidate { index , status } }
-}
-
-#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
-enum PageStatus {
-    None,
-    Dirty,
-    Clean,
-    OldAndDirty,
-    OldAndClean,
-}
-
-impl Ord for Candidate {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.status.cmp(&other.status)
-    }
 }
 
 fn contains_page(page_num : usize , collection : &Vec<Page>) -> Option<usize> {
@@ -232,27 +206,39 @@ mod tests {
     }
 
     #[test]
-    fn candidate_comparison_works() {
-        let d_candidate = Candidate { index: 0, status: PageStatus::Dirty };
-        let c_candidate = Candidate { index: 0, status: PageStatus::Clean };
-        let oad_candidate = Candidate { index: 0, status: PageStatus::OldAndDirty };
-        let oac_candidate = Candidate { index: 0, status: PageStatus::OldAndClean };
-        assert_eq!(d_candidate < c_candidate , true);
-        assert_eq!(d_candidate < oad_candidate , true);
-        assert_eq!(d_candidate < oac_candidate , true);
-        assert_eq!(oac_candidate > oad_candidate , true);
-    }
-
-    #[test]
-    fn evicts_three_because_two_is_dirty_after_evicting_one() {
-        let accesses = MemoryAccess::create(String::from("R:1 R:2 W:2 R:3 W:4 R:5"));
+    fn evicts_one_and_four_because_age_is_old_enough() {
+        let accesses = MemoryAccess::create(String::from("R:1 R:2 R:3 W:4 W:2 R:5"));
         let total_pages = 3;
         let v_memory : Vec<Page> = Vec::with_capacity(total_pages);
         let results = process_page_requests(5, total_pages, accesses, v_memory);
         assert_eq!(results[0] , AccessResult::MissSimple);
         assert_eq!(results[1] , AccessResult::MissSimple);
-        assert_eq!(results[2] , AccessResult::Hit);
-        assert_eq!(results[3] , AccessResult::MissSimple);
+        assert_eq!(results[2] , AccessResult::MissSimple);
+        assert_eq!(results[4] , AccessResult::Hit);
+
+        // Replaced R:1 at index 0, pushed R:4
+        let mr = MissReplacement::new(1, 0, 4);
+        assert_eq!(results[3] , AccessResult::MissReplace(mr));
+
+        // Replaced R:4 at index 0, pushed R:5
+        let mr = MissReplacement::new(4, 0, 5);
+        assert_eq!(results[5] , AccessResult::MissReplace(mr));
+
+        assert_eq!(get_total_faults(&results) , 5);
+    }
+
+    #[test]
+    fn skips_dirty_page_two_for_clean_three_when_age_is_old() {
+        let accesses = MemoryAccess::create(String::from("R:1 W:2 R:3 W:2 W:4 R:4 R:4 R:5"));
+        let total_pages = 3;
+        let v_memory : Vec<Page> = Vec::with_capacity(total_pages);
+        let results = process_page_requests(3, total_pages, accesses, v_memory);
+        assert_eq!(results[0] , AccessResult::MissSimple);
+        assert_eq!(results[1] , AccessResult::MissSimple);
+        assert_eq!(results[2] , AccessResult::MissSimple);
+        assert_eq!(results[3] , AccessResult::Hit);
+        assert_eq!(results[5] , AccessResult::Hit);
+        assert_eq!(results[6] , AccessResult::Hit);
 
         // Replaced R:1 at index 0, pushed R:4
         let mr = MissReplacement::new(1, 0, 4);
@@ -260,57 +246,9 @@ mod tests {
 
         // Replaced R:3 at index 2, pushed R:5
         let mr = MissReplacement::new(3, 2, 5);
-        assert_eq!(results[5] , AccessResult::MissReplace(mr));
+        assert_eq!(results[7] , AccessResult::MissReplace(mr));
 
         assert_eq!(get_total_faults(&results) , 5);
-    }
-
-    #[test]
-    fn evicts_four_because_two_and_three_are_referenced() {
-        let accesses = MemoryAccess::create(String::from("R:1 W:2 R:3 W:4 R:5 R:2 R:3 R:6"));
-        let total_pages = 4;
-        let v_memory : Vec<Page> = Vec::with_capacity(total_pages);
-        let results = process_page_requests(5, total_pages, accesses, v_memory);
-        assert_eq!(results[0] , AccessResult::MissSimple);
-        assert_eq!(results[1] , AccessResult::MissSimple);
-        assert_eq!(results[2] , AccessResult::MissSimple);
-        assert_eq!(results[3] , AccessResult::MissSimple);
-        assert_eq!(results[5] , AccessResult::Hit);
-        assert_eq!(results[6] , AccessResult::Hit);
-
-        // Replaced R:1 at index 0, pushed R:4
-        let mr = MissReplacement::new(1, 0, 5);
-        assert_eq!(results[4] , AccessResult::MissReplace(mr));
-
-        // Replaced R:1 at index 0, pushed R:4
-        let mr = MissReplacement::new(4, 3, 6);
-        assert_eq!(results[7] , AccessResult::MissReplace(mr));
-
-        assert_eq!(get_total_faults(&results) , 6);
-    }
-
-    #[test]
-    fn evicts_because_tau_is_older() {
-        let accesses = MemoryAccess::create(String::from("R:1 W:2 R:3 W:4 R:5 R:2 R:3 R:6"));
-        let total_pages = 4;
-        let v_memory : Vec<Page> = Vec::with_capacity(total_pages);
-        let results = process_page_requests(5, total_pages, accesses, v_memory);
-        assert_eq!(results[0] , AccessResult::MissSimple);
-        assert_eq!(results[1] , AccessResult::MissSimple);
-        assert_eq!(results[2] , AccessResult::MissSimple);
-        assert_eq!(results[3] , AccessResult::MissSimple);
-        assert_eq!(results[5] , AccessResult::Hit);
-        assert_eq!(results[6] , AccessResult::Hit);
-
-        // Replaced R:1 at index 0, pushed R:4
-        let mr = MissReplacement::new(1, 0, 5);
-        assert_eq!(results[4] , AccessResult::MissReplace(mr));
-
-        // Replaced R:1 at index 0, pushed R:4
-        let mr = MissReplacement::new(4, 3, 6);
-        assert_eq!(results[7] , AccessResult::MissReplace(mr));
-
-        assert_eq!(get_total_faults(&results) , 6);
     }
 
 }
