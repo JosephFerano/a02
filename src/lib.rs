@@ -1,17 +1,22 @@
 
+// Corresponds to the R:N and W:N in the memory access text
 #[derive(Debug, PartialEq)]
 pub enum AccessType {
     Read,
     Write,
 }
 
+// Helps us keep track of the different results when trying to access a page
+// MissSimple simply means that we can push the page because we have space in physical memory
+// MissReplace is when we don't have space and need to evict a page
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum AccessResult {
     MissSimple,
     MissReplace(MissReplacement),
     Hit,
 }
-
+// This helps us track who was replaced, at what index, and which page replaced the old one
+// Did this so we can unit test and get accurate testing results
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct MissReplacement {
     pub replaced : usize,
@@ -20,6 +25,7 @@ pub struct MissReplacement {
 }
 
 impl MissReplacement {
+    // Constructor
     pub fn new(replaced : usize , frame_index : usize , new_page : usize) -> MissReplacement {
         MissReplacement {
             replaced,
@@ -29,12 +35,14 @@ impl MissReplacement {
     }
 }
 
+// Simple data structure to represent the R:N and W:N in the text
 pub struct MemoryAccess {
     pub frame_number : usize,
     pub access_type : AccessType,
 }
 
 impl MemoryAccess {
+    // Constructor to create a collection by parsing the input string
     pub fn create(input_string : String) -> Vec<MemoryAccess> {
         let vals = input_string
             .split_whitespace()
@@ -55,6 +63,7 @@ impl MemoryAccess {
     }
 }
 
+// Optimal and Second Chance Parameters from the CLI args
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone)]
 pub struct ORA_SCA_Params {
@@ -62,15 +71,17 @@ pub struct ORA_SCA_Params {
     pub access_string : String,
 }
 
+// WSClock Page Replacement Parameters from the CLI args
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone)]
-pub struct WSCRP_Params {
+pub struct WSCPR_Params {
     pub total_frames : usize,
     pub access_string : String,
     pub tau : usize,
 }
 
 impl ORA_SCA_Params {
+    // Constructor collecting CLI args directly, emitting errors in the process
     pub fn get() -> ORA_SCA_Params {
         let args : Vec<String> = std::env::args().collect();
         let frames = parse_number("frame count", args.get(1))
@@ -90,8 +101,9 @@ impl ORA_SCA_Params {
     }
 }
 
-impl WSCRP_Params {
-    pub fn get() -> WSCRP_Params {
+impl WSCPR_Params {
+    // Constructor collecting CLI args directly, emitting errors in the process
+    pub fn get() -> WSCPR_Params {
         let args : Vec<String> = std::env::args().collect();
         let frames = parse_number("frame count", args.get(1))
             .unwrap_or_else(|e| {
@@ -108,7 +120,7 @@ impl WSCRP_Params {
                 eprintln!("Args Error: {}", e);
                 std::process::exit(1);
             });
-        WSCRP_Params {
+        WSCPR_Params {
             total_frames: frames,
             access_string: file,
             tau,

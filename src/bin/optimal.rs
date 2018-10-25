@@ -8,55 +8,68 @@ fn main() -> std::io::Result<()> {
     println!("Memory accesses: {}", params.access_string);
 
     let accesses = MemoryAccess::create(params.access_string);
-    let v_memory : Vec<usize> = Vec::with_capacity(params.total_frames as usize);
-    let results = process_page_requests(params.total_frames as usize, accesses, v_memory);
+    let v_memory : Vec<usize> = Vec::with_capacity(params.total_frames);
+    let results = process_page_requests(params.total_frames, accesses, v_memory);
 
     println!("Total faults: {}", get_total_faults(&results));
 
     Ok(())
 }
 
-fn process_page_requests(total_physical_pages : usize , accesses : Vec<MemoryAccess> , mut v_memory : Vec<usize>) -> Vec<AccessResult> {
+fn process_page_requests(total_physical_pages : usize , accesses : Vec<MemoryAccess> , mut pages : Vec<usize>) -> Vec<AccessResult> {
     let mut results : Vec<AccessResult> = Vec::with_capacity(accesses.len());
+    // Iterate over all the accesses in order
     for (i, access) in accesses.iter().enumerate() {
-        if !v_memory.contains(&access.frame_number) {
-            let length = v_memory.len().clone();
+        // Does the page exist?
+        if !pages.contains(&access.frame_number) {
+            let length = pages.len().clone();
+            // Crucially, here we check if we have space, if we do, it's a simple miss
             if length < total_physical_pages {
-                v_memory.push(access.frame_number);
+                pages.push(access.frame_number);
                 results.push(AccessResult::MissSimple);
             } else {
+                // Here we have nested loops that will go through all of the existing pages
                 let mut index = 0;
+                // max here keeps track of the highest index of a memory access, so that the
+                // page that is accessed the latest is the one we remove
                 let mut max : Option<usize> = None;
-                for (ii, vm) in v_memory.iter().enumerate() {
+                for (ii, vm) in pages.iter().enumerate() {
                     let mut was_found = false;
+                    // Only iterate from the last memory access till the end, because it doesn't
+                    // make sense to start from the beginning
                     for jj in (i + 1)..accesses.len() {
                         let acc = &accesses[jj];
                         if vm == &acc.frame_number {
+                            // The frame is accessed later on in the memory accesses!
                             was_found = true;
                             if max.is_none() || max.unwrap() < jj {
-                                index = ii as isize;
+                                index = ii;
                                 max = Some(jj);
                             }
                             break;
                         }
                     }
+                    // After we initially found a page that is accessed, we later found one that
+                    // wasn't
                     if !was_found && max.is_some() {
                         max = None;
                     }
+                    // None means that the page is no longer accessed, so we can remove it
                     match max  {
                         Some(_) => (),
                         None => {
-                            index = ii as isize;
+                            index = ii;
                             break;
                         }
                     }
                 }
+                // Finally! handle the replacement
                 results.push(AccessResult::MissReplace(
                     MissReplacement::new(
-                        v_memory[index as usize],
-                        index as usize,
+                        pages[index],
+                        index,
                         access.frame_number)));
-                v_memory[index as usize] = access.frame_number;
+                pages[index] = access.frame_number;
             }
         } else {
             results.push(AccessResult::Hit);

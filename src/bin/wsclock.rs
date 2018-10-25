@@ -1,10 +1,9 @@
 extern crate a02;
 
 use a02::*;
-use std::cmp::Ordering;
 
 fn main() -> std::io::Result<()> {
-    let params = WSCRP_Params::get();
+    let params = WSCPR_Params::get();
     println!("Total Frames: {}", params.total_frames);
     println!("Tau: {}", params.tau);
     println!("Memory accesses: {}", params.access_string);
@@ -20,13 +19,19 @@ fn main() -> std::io::Result<()> {
 }
 
 fn process_page_requests(tau : usize , total_physical_pages : usize , accesses : Vec<MemoryAccess> , mut v_memory : Vec<Page>)-> Vec<AccessResult> {
+    // The clock pointer!
     let mut pointer = 0;
     let mut results : Vec<AccessResult> = Vec::with_capacity(accesses.len());
 
+    // Iterate over all the accesses in order, clock provides the age
     for (clock, access) in accesses.iter().enumerate() {
         let contained = contains_page(access.frame_number, &v_memory);
+        // Does the page exist?
         if contained.is_none() {
             let length = v_memory.len().clone();
+            let mut index;
+            // Crucially, here we check if we have space, if we do, it's a simple miss
+            // is_dirty is false because it's the first entry
             if length < total_physical_pages {
                 v_memory.push(Page {
                     number : access.frame_number,
@@ -34,34 +39,40 @@ fn process_page_requests(tau : usize , total_physical_pages : usize , accesses :
                     is_dirty : false,
                     referenced : true, });
                 results.push(AccessResult::MissSimple);
-//                println!("MissSimple {}", access.frame_number);
             } else {
-                let mut index = 0;
+                // Remember to modulo so we can loop around, it gets tedious though...
+                // start_pointer and iteration in conjunction help us keep track of whether we're
+                // back to the beginning
                 let start_pointer = pointer % length;
                 let mut iteration = 0;
-                // Iterate once to
+                // We are basically going to loop until either the age is greater than tau, or
+                // we have made it to the second iteration
                 loop {
                     let page = &mut v_memory[pointer % length];
-                    println!("Checking {:?} Iter {} Age {}", page, iteration, clock - page.timestamp);
                     if page.referenced {
+                        // It's referenced! Remove reference...
                         page.referenced = false;
                     } else {
                         let age = clock - page.timestamp;
                         if age > tau {
+                            // If it's old and clean, give it the index of the page we're going to evict
                             if !page.is_dirty {
                                 index = pointer % length;
-                                println!("OldAndClean {}", page.number);
                                 break;
                             }
                         } else if iteration > 0 {
+                            // If it's second iteration and clean,
+                            // give it the index of the page we're going to evict
                             if !page.is_dirty {
                                 index = pointer % length;
-                                println!("OldAndClean {}", page.number);
                                 break;
                             }
                         }
+                        // Always schedule a write to disk... according to the algorithm
+                        // the is_dirty flag would get set asynchronously, probably by some
+                        // interrupt, but we don't have that, although we could just create a
+                        // child thread to change it but that's complicated
                         if page.is_dirty {
-                            println!("OldAndDirty {}", page.number);
                             schedule_write_to_disk(page.clone());
                             page.is_dirty = false;
                         }
@@ -71,22 +82,21 @@ fn process_page_requests(tau : usize , total_physical_pages : usize , accesses :
                         iteration += 1;
                     }
                 }
-                let i = index;
+                // Finally! Handle the replacement using the index we found, evict and push!
                 results.push(AccessResult::MissReplace(
                     MissReplacement::new(
-                        v_memory[i].number,
-                        i,
+                        v_memory[index].number,
+                        index,
                         access.frame_number)));
-                v_memory[i] = Page {
+                v_memory[index] = Page {
                     number : access.frame_number,
                     timestamp : clock,
                     is_dirty : false,
                     referenced : true };
             }
-            println!("-----------------")
         } else {
-//            println!("Hit {:?}", v_memory[contained.unwrap()].number);
             v_memory[contained.unwrap()].referenced = true;
+            // Update the timestamp!
             v_memory[contained.unwrap()].timestamp = clock;
             if access.access_type == AccessType::Write {
                 v_memory[contained.unwrap()].is_dirty = true;
@@ -98,8 +108,9 @@ fn process_page_requests(tau : usize , total_physical_pages : usize , accesses :
     results
 }
 
+// Just fake it!
 fn schedule_write_to_disk(page : Page) {
-//    println!("Scheduling write to disk {:?}", page);
+    println!("Scheduling write to disk {:?}", page);
 }
 
 fn contains_page(page_num : usize , collection : &Vec<Page>) -> Option<usize> {
@@ -111,6 +122,7 @@ fn contains_page(page_num : usize , collection : &Vec<Page>) -> Option<usize> {
     None
 }
 
+// Even more complex data structure
 #[derive(Debug, Clone)]
 pub struct Page {
     pub number : usize,
