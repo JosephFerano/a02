@@ -1,6 +1,6 @@
 ## Memory Management in Rust for CCOM4017
 
-The code is organized into 4 files; `wsclock.rs`, `second.rs`, `optimal.rs`, and `lib.rs`. Rust automagically generates binaries for the first 3, lib has some shared code.
+The code is organized into 4 files; `wsclock.rs`, `second.rs`, `optimal.rs`, and `lib.rs`. Rust automagically generates binaries for the first 3, lib has some shared code. Code can be found on github as well (https://github.com/JosephFerano/a02)
 
 #### Running
 
