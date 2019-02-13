@@ -2,6 +2,8 @@
 
 The code is organized into 4 files; `wsclock.rs`, `second.rs`, `optimal.rs`, and `lib.rs`. Rust automagically generates binaries for the first 3, lib has some shared code. Code can be found on github as well (https://github.com/JosephFerano/a02)
 
+This project takes a text file with commands for read/write access to pages, and three different paging algorithms are implemented to handle the sequences.
+
 #### Running
 
 ```./optimal <PHYSICAL_MEMORY_PAGES> <FILENAME>```
